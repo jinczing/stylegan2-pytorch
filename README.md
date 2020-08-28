@@ -9,6 +9,9 @@ Result (Demostrated with 0.7 truncation):
 
 ![Pokemon Sample with Truncation](results/g_ema_020000_truncated.png)
 
+Transition from pretrained horse model:
+
+![Pretrained model transition](/results/stylegan2-horse-config-f-20000.gif)
 
 # StyleGAN 2 in PyTorch
 
