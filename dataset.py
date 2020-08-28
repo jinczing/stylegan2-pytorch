@@ -20,6 +20,7 @@ class MultiResolutionDataset(Dataset):
             raise IOError('Cannot open lmdb dataset', path)
 
         with self.env.begin(write=False) as txn:
+            print(txn)
             self.length = int(txn.get('length'.encode('utf-8')).decode('utf-8'))
 
         self.resolution = resolution

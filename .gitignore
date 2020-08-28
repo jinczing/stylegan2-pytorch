@@ -132,4 +132,11 @@ wandb/
 *.lmdb/
 *.pkl
 
+# custom
+
 *.pt
+/images/
+/pokemon_images/
+/checkpoint/
+/sample/
+

@@ -40,7 +40,7 @@ def resize_worker(img_file, sizes, resample):
 
 def prepare(env, dataset, n_worker, sizes=(128, 256, 512, 1024), resample=Image.LANCZOS):
     resize_fn = partial(resize_worker, sizes=sizes, resample=resample)
-
+    print("function prepare")
     files = sorted(dataset.imgs, key=lambda x: x[0])
     files = [(i, file) for i, (file, label) in enumerate(files)]
     total = 0
@@ -78,5 +78,5 @@ if __name__ == '__main__':
 
     imgset = datasets.ImageFolder(args.path)
 
-    with lmdb.open(args.out, map_size=1024 ** 4, readahead=False) as env:
+    with lmdb.open(args.out, map_size=1024 ** 2 * 100, readahead=False) as env:
         prepare(env, imgset, args.n_worker, sizes=sizes, resample=resample)

@@ -6,6 +6,7 @@ import os
 import numpy as np
 import torch
 from torch import nn, autograd, optim
+from torch.autograd import Variable
 from torch.nn import functional as F
 from torch.utils import data
 import torch.distributed as dist
@@ -100,9 +101,9 @@ def g_path_regularize(fake_img, latents, mean_path_length, decay=0.01):
 
 def make_noise(batch, latent_dim, n_noise, device):
     if n_noise == 1:
-        return torch.randn(batch, latent_dim, device=device)
+        return torch.randn(batch, latent_dim).to(device)
 
-    noises = torch.randn(n_noise, batch, latent_dim, device=device).unbind(0)
+    noises = torch.randn(n_noise, batch, latent_dim).to(device).unbind(0)
 
     return noises
 
@@ -170,6 +171,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         requires_grad(discriminator, True)
 
         noise = mixing_noise(args.batch, args.latent, args.mixing, device)
+
         fake_img, _ = generator(noise)
 
         if args.augment:
@@ -182,11 +184,9 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         fake_pred = discriminator(fake_img)
         real_pred = discriminator(real_img_aug)
         d_loss = d_logistic_loss(real_pred, fake_pred)
-
         loss_dict["d"] = d_loss
         loss_dict["real_score"] = real_pred.mean()
         loss_dict["fake_score"] = fake_pred.mean()
-
         discriminator.zero_grad()
         d_loss.backward()
         d_optim.step()
@@ -243,6 +243,8 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
         generator.zero_grad()
         g_loss.backward()
         g_optim.step()
+
+        # print('g training complete')
 
         g_regularize = i % args.g_reg_every == 0
 
@@ -321,7 +323,7 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                         range=(-1, 1),
                     )
 
-            if i % 10000 == 0:
+            if i % 2000 == 0:
                 torch.save(
                     {
                         "g": g_module.state_dict(),
@@ -335,9 +337,23 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                     f"checkpoint/{str(i).zfill(6)}.pt",
                 )
 
+    torch.save(
+        {
+            "g": g_module.state_dict(),
+            "d": d_module.state_dict(),
+            "g_ema": g_ema.state_dict(),
+            "g_optim": g_optim.state_dict(),
+            "d_optim": d_optim.state_dict(),
+            "args": args,
+            "ada_aug_p": ada_aug_p,
+        },
+        f"checkpoint/final.pt",
+    )
+
 
 if __name__ == "__main__":
-    device = "cuda"
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cpu')
 
     parser = argparse.ArgumentParser()
 
@@ -353,6 +369,8 @@ if __name__ == "__main__":
     parser.add_argument("--g_reg_every", type=int, default=4)
     parser.add_argument("--mixing", type=float, default=0.9)
     parser.add_argument("--ckpt", type=str, default=None)
+    parser.add_argument("--pretrained", type=str, default=None)
+    parser.add_argument("--start_iter", type=int, default=0)
     parser.add_argument("--lr", type=float, default=0.002)
     parser.add_argument("--channel_multiplier", type=int, default=2)
     parser.add_argument("--wandb", action="store_true")
@@ -364,7 +382,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    n_gpu = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
+    os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
+    # n_gpu = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
+    n_gpu = 1
     args.distributed = n_gpu > 1
 
     if args.distributed:
@@ -374,8 +395,6 @@ if __name__ == "__main__":
 
     args.latent = 512
     args.n_mlp = 8
-
-    args.start_iter = 0
 
     generator = Generator(
         args.size, args.latent, args.n_mlp, channel_multiplier=args.channel_multiplier
@@ -403,6 +422,20 @@ if __name__ == "__main__":
         betas=(0 ** d_reg_ratio, 0.99 ** d_reg_ratio),
     )
 
+    if args.pretrained is not None:
+        print("load pretrained model: ", args.pretrained)
+
+        pretrained = torch.load(args.pretrained, map_location=lambda storage, loc: storage)
+
+        try:
+            pretrained_name = os.path.basename(args.pretrained)
+        except ValueError:
+            pass
+
+        generator.load_state_dict(pretrained['g'])
+        discriminator.load_state_dict(pretrained['d'])
+        g_ema.load_state_dict(pretrained['g_ema'])
+
     if args.ckpt is not None:
         print("load model:", args.ckpt)
 
@@ -422,20 +455,20 @@ if __name__ == "__main__":
         g_optim.load_state_dict(ckpt["g_optim"])
         d_optim.load_state_dict(ckpt["d_optim"])
 
-    if args.distributed:
-        generator = nn.parallel.DistributedDataParallel(
-            generator,
-            device_ids=[args.local_rank],
-            output_device=args.local_rank,
-            broadcast_buffers=False,
-        )
+    # if args.distributed:
+    #     generator = nn.parallel.DistributedDataParallel(
+    #         generator,
+    #         device_ids=[args.local_rank],
+    #         output_device=args.local_rank,
+    #         broadcast_buffers=False,
+    #     )
 
-        discriminator = nn.parallel.DistributedDataParallel(
-            discriminator,
-            device_ids=[args.local_rank],
-            output_device=args.local_rank,
-            broadcast_buffers=False,
-        )
+    #     discriminator = nn.parallel.DistributedDataParallel(
+    #         discriminator,
+    #         device_ids=[args.local_rank],
+    #         output_device=args.local_rank,
+    #         broadcast_buffers=False,
+    #     )
 
     transform = transforms.Compose(
         [
@@ -446,6 +479,7 @@ if __name__ == "__main__":
     )
 
     dataset = MultiResolutionDataset(args.path, transform, args.size)
+
     loader = data.DataLoader(
         dataset,
         batch_size=args.batch,
@@ -454,6 +488,7 @@ if __name__ == "__main__":
     )
 
     if get_rank() == 0 and wandb is not None and args.wandb:
+        print('wandb')
         wandb.init(project="stylegan 2")
 
     train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, device)

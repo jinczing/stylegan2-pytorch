@@ -21,6 +21,32 @@ def generate(args, g_ema, device, mean_latent):
             range=(-1, 1),
         )
 
+def grid_generator(args, g_ema, g, device, mean_latent):
+
+    with torch.no_grad():
+        g_ema.eval()
+        images = []
+        for i in tqdm(range(args.epoch)):
+            sample_z = torch.randn(args.sample, args.latent, device=device)
+
+            sample, _ = g_ema([sample_z], truncation=args.truncation, truncation_latent=mean_latent)
+
+            images.append(sample.cpu().data)
+        print(len(images), images[0].shape)
+        utils.save_image(torch.cat(images, 0), 'g_ema.png', normalize=True, range=(-1, 1), nrow=8)
+
+    with torch.no_grad():
+        g.eval()
+        images = []
+        for i in tqdm(range(args.epoch)):
+            sample_z = torch.randn(args.sample, args.latent, device=device)
+
+            sample, _ = g([sample_z], truncation=args.truncation, truncation_latent=mean_latent)
+
+            images.append(sample.cpu().data)
+
+        utils.save_image(torch.cat(images, 0), 'g.png', normalize=True, range=(-1, 1), nrow=8)
+
 if __name__ == '__main__':
     device = 'cuda'
 
@@ -29,6 +55,7 @@ if __name__ == '__main__':
     parser.add_argument('--size', type=int, default=1024)
     parser.add_argument('--sample', type=int, default=1)
     parser.add_argument('--pics', type=int, default=20)
+    parser.add_argument('--epoch', type=int, default=1)
     parser.add_argument('--truncation', type=float, default=1)
     parser.add_argument('--truncation_mean', type=int, default=4096)
     parser.add_argument('--ckpt', type=str, default="stylegan2-ffhq-config-f.pt")
@@ -46,10 +73,18 @@ if __name__ == '__main__':
 
     g_ema.load_state_dict(checkpoint['g_ema'])
 
+    g = Generator(
+        args.size, args.latent, args.n_mlp, channel_multiplier=args.channel_multiplier
+    ).to(device)
+    g.load_state_dict(checkpoint['g'])
+
     if args.truncation < 1:
         with torch.no_grad():
             mean_latent = g_ema.mean_latent(args.truncation_mean)
     else:
         mean_latent = None
 
-    generate(args, g_ema, device, mean_latent)
+    if args.epoch > 1:
+        grid_generator(args, g_ema, g, device, mean_latent)
+    else:
+        generate(args, g_ema, device, mean_latent)

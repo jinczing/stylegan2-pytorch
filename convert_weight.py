@@ -233,6 +233,8 @@ if __name__ == "__main__":
 
     ckpt = {"g_ema": state_dict, "latent_avg": latent_avg}
 
+    print(args.gen, args.disc)
+
     if args.gen:
         g_train = Generator(size, 512, 8, channel_multiplier=args.channel_multiplier)
         g_train_state = g_train.state_dict()
