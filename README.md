@@ -1,3 +1,15 @@
+# StyleGAN2 for Pokemon Generation
+This repo utilize stylegan2 pytorch implementation to generate pokemon.
+
+Pretrained with stylegan2-horse-config-f.pkl in official repo (https://github.com/NVlabs/stylegan2).
+
+Parameters: --iter 20000 --n_sample 8 --batch 4
+
+Result (Demostrated with 0.7 truncation):
+
+![Pokemon Sample with Truncation](results/g_ema_020000_truncated.png)
+
+
 # StyleGAN 2 in PyTorch
 
 Implementation of Analyzing and Improving the Image Quality of StyleGAN (https://arxiv.org/abs/1912.04958) in PyTorch
