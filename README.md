@@ -7,7 +7,7 @@ Parameters: --iter 20000 --n_sample 8 --batch 4
 
 Result (Demostrated with 0.7 truncation):
 
-
+![Pokemon Sample with Truncation](results/g_ema_020000_truncated.png)
 
 
 # StyleGAN 2 in PyTorch
